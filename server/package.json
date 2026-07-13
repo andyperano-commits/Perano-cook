@@ -1,0 +1,17 @@
+{
+  "name": "perano-cook-server",
+  "version": "1.0.0",
+  "description": "Backend proxy that gives Perano Cook an AI assistant (Claude API) without exposing the API key to the browser.",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.68.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2"
+  }
+}
