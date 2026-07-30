@@ -1,21 +1,25 @@
 // Bedside Ball Enclosure — ESP32-S3-Touch-AMOLED-1.75C voice assistant
 //
 // Freestanding sphere with a flat-cut foot, split into two printable halves:
-//   - front half: screen bezel/window opening, mic gap, board mounting standoffs
+//   - front half: a stepped circular pocket the round display module drops
+//     into (module OD/glass diameter/thickness confirmed from Waveshare's
+//     outline drawing — it's a fully-assembled module with its own bezel
+//     and glass, not a bare PCB, and has no mounting screws), plus the mic
+//     gap and button access holes
 //   - back half: flat foot, USB-C cutout, most of the interior volume
-// The two halves join on a tilted parting plane (perpendicular to the board's
-// mounting axis) via a tongue-and-groove lip, secured with small screws driven
-// in from just outside the seam.
+// The two halves join on a tilted parting plane (perpendicular to the
+// module's mounting axis) via a tongue-and-groove lip, secured with small
+// screws driven in from just outside the seam.
 //
 // Print orientation: print each half with its flat parting face down on the
 // bed — this keeps the dome curvature self-supporting with no internal
 // scaffolding, which was the whole point of splitting the original single
 // hollow-sphere design.
 //
-// Values marked "TODO verify" are best-effort placeholders (no PCB in hand
-// yet) — measure the actual board with calipers and adjust before printing
-// final parts. Everything else derives from these parameters, so tuning
-// them re-shapes the whole model.
+// Values marked "TODO verify" are best-effort placeholders — measure/tune
+// against the physical module and a test print before printing final
+// parts. Everything else derives from these parameters, so tuning them
+// re-shapes the whole model.
 
 /* ============================================================
    USER-TUNABLE PARAMETERS
@@ -39,44 +43,46 @@ base_plate_thick  = 3.2;  // mm, solid floor thickness (thicker than `wall`
 // single number to change to re-angle the whole display.
 board_tilt = 25;          // degrees, rotation about world X axis
 
-// --- Board footprint (TODO verify against actual PCB) ---
-board_w         = 58;     // board footprint width, mm
-board_d         = 58;     // board footprint depth, mm
-board_clearance = 1.5;    // extra clearance around board footprint, mm
-standoff_d      = 6;      // mounting standoff post diameter, mm
-standoff_pilot_d = 2.2;   // pilot hole for M2 self-tapping screw into post
-standoff_pilot_depth = 6; // pilot hole depth, drilled down from the top, mm
-standoff_weld_overlap = 0.6; // mm the post sinks into the inner shell wall
-                              // so it fuses into one solid instead of
-                              // floating (union of tangent faces isn't
-                              // reliably manifold in CGAL)
+// --- Round module footprint ---
+// The ESP32-S3-Touch-AMOLED-1.75C is sold as a fully-assembled round
+// module with its own metal bezel/case and glass — not a bare rectangular
+// PCB — confirmed from Waveshare's own outline-dimension drawing and by
+// checking the physical unit (no mounting screw holes on the back). It
+// drops into a circular pocket and is retained by friction + the bezel
+// seating against a shoulder, so there's no standoff/screw mounting logic
+// here at all.
+module_od         = 55;     // module OD including metal bezel, mm — confirmed (Waveshare drawing)
+module_glass_d    = 48.96;  // outer edge of the visible glass/bezel border, mm — confirmed
+module_active_d   = 43.76;  // active display area diameter, mm — confirmed, for reference only
+module_thickness  = 15.05;  // total module depth front-to-back, mm — confirmed
+module_pocket_clearance = 0.6; // mm diametral clearance so the module drops in
+module_pocket_d   = module_od + module_pocket_clearance;
 
-// Board mounting hole positions, in the board's own local XY frame,
-// origin at board center (TODO verify against actual PCB mounting holes).
-board_mount_inset = 6;
-board_mount_holes = [
-    [ -(board_w/2 - board_mount_inset),  (board_d/2 - board_mount_inset) ],
-    [  (board_w/2 - board_mount_inset),  (board_d/2 - board_mount_inset) ],
-    [ -(board_w/2 - board_mount_inset), -(board_d/2 - board_mount_inset) ],
-    [  (board_w/2 - board_mount_inset), -(board_d/2 - board_mount_inset) ],
-];
+// --- Screen opening ---
+// A narrow through-hole reveals the module's own glass while the shell's
+// front material hides the metal bezel behind it; the module's rim seats
+// against the shoulder where the narrow hole meets the wider pocket.
+//
+// window_step_depth can't be a small cosmetic number here — a 55mm module
+// is large relative to a 92mm ball, and a sphere's cross-section narrows
+// fast near the pole. Seating the module too close to the outer surface
+// makes the pocket wider than the ball's cross-section at that depth,
+// which would blow a hole out the side instead of a clean socket facing
+// outward. 10mm keeps ~4mm of shell material around the pocket's rim at
+// its narrowest (front) point — see the geometry check this derives from
+// in the project README. The practical effect: the display sits in a
+// noticeably recessed socket (like a deep-set eye) rather than flush with
+// the surface. If that's not the desired look, the fix is a bigger
+// sphere_od, not a smaller window_step_depth.
+window_d          = module_glass_d + 1; // through-hole diameter, reveals the glass
+window_step_depth = 10;    // mm, see note above — TODO tune after a test
+                            // fit once the module's exact rim-to-glass
+                            // offset is known (Waveshare's drawing doesn't
+                            // give it)
 
-// How deep inside the shell (along the board's own normal) the board's
-// front face sits, measured from the inner shell surface at the pole of
-// the board-normal axis. TODO verify once display module thickness and
-// standoff stack height are known.
-board_face_depth = 10;
-
-// --- Screen window (1.75" round AMOLED, ~44.5mm active diagonal) ---
-// TODO verify actual display module glass/bezel diameter against the
-// real board — this assumes a common round module size for this class
-// of Waveshare board.
-display_active_d = 44.6;  // display active area diameter, mm (1.75in)
-window_d          = 50;    // through-hole diameter for the clear window
-window_step_d     = 54;    // rabbet (step) outer diameter, window sits in this
-window_step_depth = 1.6;   // rabbet depth, mm
-window_thickness  = 2.0;   // clear PETG/acrylic window disc thickness, mm
-window_fit_clearance = 0.3; // radial clearance so the disc drops into the rabbet
+// Radius used to place the mic/button cutouts just outside the module's
+// edge, so they land on the module's own side-mounted mic/button ports.
+module_edge_r = module_od/2 + 1;
 
 // --- Mic gap (dual mic pickup) ---
 // Per the real board layout: MIC1 and MIC2 sit at opposite corners of one
@@ -114,10 +120,14 @@ split_offset   = 2;    // mm, split plane offset from sphere center along the
 lip_depth      = 5;    // mm, how far the tongue protrudes / groove is cut
 lip_wall       = 1.2;  // mm, tongue ring wall thickness
 lip_clearance  = 0.25; // mm, radial fit clearance for the groove
+weld_overlap   = 0.6;  // mm two features sink into each other by, so CGAL
+                        // unions a real overlap instead of merely tangent
+                        // (touching) faces, which isn't reliably manifold
 
 // --- Seam screws (small self-tapping screws driven in near the seam) ---
 screw_count     = 4;
 screw_pilot_d   = 2.0;  // pilot hole in the boss, mm (M2 self-tapping)
+screw_pilot_depth = 6;  // pilot hole depth, drilled down from the top, mm
 screw_clear_d   = 2.6;  // clearance hole through the front half, mm
 screw_head_d    = 4.5;  // countersink for screw head, mm
 screw_head_depth = 1.6;
@@ -187,33 +197,53 @@ module full_shell() {
 }
 
 /* ============================================================
-   SCREEN WINDOW OPENING + STANDOFFS (board-frame features)
+   MODULE POCKET (board-frame features)
    ============================================================ */
 
-module screen_window_cut() {
+// z-height (board-frame local) where the module's front rim seats — the
+// shoulder between the narrow glass-reveal hole and the wider body pocket.
+module_seat_z = sphere_r - wall - window_step_depth;
+
+module module_pocket_cut() {
     board_frame() {
-        // full through-hole for the display
-        translate([0, 0, sphere_r - board_face_depth - 1])
-            cylinder(h=board_face_depth + 2, d=window_d);
-        // rabbet step the clear window disc sits in, cut from outside in
-        translate([0, 0, sphere_r - wall - window_step_depth])
-            cylinder(h=wall + window_step_depth + 1, d=window_step_d);
+        // narrow through-hole from the outer surface down to the seat,
+        // revealing the module's glass and hiding its metal bezel
+        translate([0, 0, module_seat_z - 1])
+            cylinder(h=(sphere_r - module_seat_z) + 1, d=window_d);
+        // pocket for the module's full body (rim + depth), recessed
+        // inward from the seat — the module drops in from the back and
+        // its rim stops against the shoulder here, since the pocket is
+        // wider than the glass-reveal hole above
+        translate([0, 0, module_seat_z - module_thickness])
+            cylinder(h=module_thickness + 1, d=module_pocket_d);
     }
 }
 
 module mic_gap_cut() {
-    // Two slots near the board's perimeter, mirrored across the local X
-    // axis to match the real MIC1/MIC2 corner placement (see
+    // Two slots just outside the module's edge, mirrored across the local
+    // X axis to match the real MIC1/MIC2 corner placement (see
     // mic_angles above) — same placement style as button_holes_cut().
+    // TODO verify depth (z0) once the module's own mic port locations
+    // along its 15mm thickness are confirmed.
+    //
+    // Each slot has to actually punch through to the outer surface — at
+    // this lateral radius the sphere's surface (a straight run along the
+    // board-normal axis, same convention as seam_screw_clearance below)
+    // is reached at z_exit, which is *not* just a wall's thickness away
+    // once the port sits this far from the local Z axis, so the span is
+    // computed explicitly rather than assumed to be a few mm.
     board_frame() {
-        board_r = sqrt(board_w*board_w + board_d*board_d) / 2 + board_clearance;
-        z0 = sphere_r - board_face_depth - wall/2;
+        z0 = module_seat_z - 3; // approx. depth of the mic port, TODO verify
+        z_exit = sqrt(max(sphere_r*sphere_r - module_edge_r*module_edge_r, 0));
+        z_start = z0 - 1;
+        z_end = z_exit + 1;
+        h = z_end - z_start;
         for (a = mic_angles) {
-            x = board_r * cos(a);
-            y = board_r * sin(a);
-            translate([x, y, z0])
+            x = module_edge_r * cos(a);
+            y = module_edge_r * sin(a);
+            translate([x, y, (z_start + z_end) / 2])
                 rotate([0, 0, a])
-                    rounded_rect_solid(mic_gap_w, mic_gap_h, mic_gap_corner_r, wall*3);
+                    rounded_rect_solid(mic_gap_w, mic_gap_h, mic_gap_corner_r, h);
         }
     }
 }
@@ -221,27 +251,6 @@ module mic_gap_cut() {
 module rounded_rect_solid(w, h, r, extrude_h) {
     translate([0, 0, -extrude_h/2])
         linear_extrude(height=extrude_h) rounded_rect(w, h, r);
-}
-
-module mounting_standoffs() {
-    // Posts run from the (curved) inner shell surface directly below each
-    // mounting hole up to the board-mounting plane, so their length varies
-    // per hole instead of assuming a flat floor underneath them.
-    board_mount_z = sphere_r - board_face_depth;
-    board_frame() {
-        for (p = board_mount_holes) {
-            r_xy = sqrt(p[0]*p[0] + p[1]*p[1]);
-            z_inner = sqrt(max(inner_r*inner_r - r_xy*r_xy, 0));
-            base_z = z_inner - standoff_weld_overlap;
-            h = board_mount_z - base_z;
-            translate([p[0], p[1], base_z])
-                difference() {
-                    cylinder(h=h, d=standoff_d);
-                    translate([0, 0, h - standoff_pilot_depth])
-                        cylinder(h=standoff_pilot_depth + 0.5, d=standoff_pilot_d);
-                }
-        }
-    }
 }
 
 /* ============================================================
@@ -267,15 +276,23 @@ module usbc_cut() {
    ============================================================ */
 
 module button_holes_cut() {
+    // Same reasoning as mic_gap_cut() above: at module_edge_r the outer
+    // surface isn't just a wall's-thickness away, so the hole's span and
+    // the countersink's position are both computed from the real z_exit
+    // rather than assumed to sit right next to z0.
     board_frame() {
-        board_r = sqrt(board_w*board_w + board_d*board_d) / 2 + board_clearance;
-        z0 = sphere_r - board_face_depth - wall/2;
+        z0 = module_seat_z - 3; // approx. depth of the button port, TODO verify
+        z_exit = sqrt(max(sphere_r*sphere_r - module_edge_r*module_edge_r, 0));
+        z_start = z0 - 1;
+        z_end = z_exit + 1;
+        h = z_end - z_start;
         for (a = button_angles) {
-            x = board_r * cos(a);
-            y = board_r * sin(a);
-            translate([x, y, z0]) {
-                cylinder(h=wall*4, d=button_hole_d, center=true);
-                translate([0, 0, wall/2 - button_countersink_depth/2])
+            x = module_edge_r * cos(a);
+            y = module_edge_r * sin(a);
+            translate([x, y]) {
+                translate([0, 0, (z_start + z_end) / 2])
+                    cylinder(h=h, d=button_hole_d, center=true);
+                translate([0, 0, z_exit - button_countersink_depth / 2])
                     cylinder(h=button_countersink_depth + 0.01, d=button_countersink_d);
             }
         }
@@ -297,10 +314,10 @@ module tongue_ring() {
     // touches) the back half's own shell material — CGAL unions of merely
     // tangent faces aren't reliably manifold.
     board_frame()
-        translate([0, 0, split_offset - standoff_weld_overlap])
+        translate([0, 0, split_offset - weld_overlap])
             difference() {
-                cylinder(h=lip_depth + standoff_weld_overlap, r=lip_mid_r + lip_wall/2);
-                cylinder(h=lip_depth + standoff_weld_overlap + 1, r=lip_mid_r - lip_wall/2);
+                cylinder(h=lip_depth + weld_overlap, r=lip_mid_r + lip_wall/2);
+                cylinder(h=lip_depth + weld_overlap + 1, r=lip_mid_r - lip_wall/2);
             }
 }
 
@@ -320,7 +337,7 @@ module groove_cut() {
 // (inboard of the outer surface, into the open interior) and each one is
 // joined back to the tongue ring with a hull() gusset rather than relying
 // on it happening to touch the shell wall on its own.
-boss_z_lo = split_offset - standoff_weld_overlap; // aligned with tongue_ring's own base
+boss_z_lo = split_offset - weld_overlap; // aligned with tongue_ring's own base
 
 module seam_screw_bosses() {
     board_frame()
@@ -343,8 +360,8 @@ module seam_screw_pilots() {
         for (i = [0 : screw_count - 1]) {
             a = i * 360 / screw_count;
             translate([screw_r * cos(a), screw_r * sin(a),
-                       boss_z_lo + boss_len - standoff_pilot_depth])
-                cylinder(h=standoff_pilot_depth + 0.5, d=screw_pilot_d);
+                       boss_z_lo + boss_len - screw_pilot_depth])
+                cylinder(h=screw_pilot_depth + 0.5, d=screw_pilot_d);
         }
 }
 
@@ -372,7 +389,7 @@ module seam_screw_clearance() {
 module shell_cut() {
     difference() {
         full_shell();
-        screen_window_cut();
+        module_pocket_cut();
         mic_gap_cut();
         usbc_cut();
         button_holes_cut();
@@ -381,10 +398,7 @@ module shell_cut() {
 
 module front_half() {
     difference() {
-        union() {
-            intersection() { shell_cut(); front_half_space(); }
-            mounting_standoffs();
-        }
+        intersection() { shell_cut(); front_half_space(); }
         groove_cut();
         seam_screw_clearance();
     }
@@ -400,18 +414,18 @@ module back_half() {
     }
 }
 
-module screen_window() {
-    // separate part: cut from clear PETG or acrylic sheet, not printed in
-    // the diffusion material — sits in the rabbet cut by screen_window_cut()
-    cylinder(h=window_thickness, d=window_step_d - window_fit_clearance);
+module module_mock() {
+    // preview-only stand-in for the round display module — not a real
+    // part, just here so the assembled render shows it seated correctly
+    color("DarkSlateGray") cylinder(h=module_thickness, d=module_od);
 }
 
 module preview_assembled() {
     front_half();
     back_half();
-    color("SkyBlue", 0.5) board_frame()
-        translate([0, 0, sphere_r - wall - window_step_depth])
-            screen_window();
+    board_frame()
+        translate([0, 0, module_seat_z - module_thickness])
+            module_mock();
 }
 
 /* ============================================================
@@ -420,9 +434,8 @@ module preview_assembled() {
    `openscad -D PART="\"front\""`).
    ============================================================ */
 
-PART = "assembled"; // "front" | "back" | "window" | "assembled"
+PART = "assembled"; // "front" | "back" | "assembled"
 
 if (PART == "front") front_half();
 else if (PART == "back") back_half();
-else if (PART == "window") screen_window();
 else preview_assembled();

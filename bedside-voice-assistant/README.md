@@ -25,49 +25,74 @@ power draw or charge circuitry.
 
 - Sphere, 92mm OD, 2.6mm wall, flat-cut base so it sits freestanding with
   no cradle
-- Board cavity tilted 25° so the screen faces up toward the bed
-- Two mic gap slots (not one) mirrored across one side of the board, and
+- Module mounting axis tilted 25° so the screen faces up toward the bed
+- Two mic gap slots (not one) mirrored across one side of the module, and
   two button access holes mirrored across the opposite side — matching
   the real board's layout (MIC1/MIC2 diagonal corners on one edge,
   BOOT/PWR on the other), confirmed from Waveshare's own schematic/layout
   pages rather than guessed
 - USB-C cutout
-- **Split into two printable halves** (front: screen bezel + mic gap +
-  board mounting standoffs; back: flat base + USB-C + most of the
-  interior), joined by a tongue-and-groove seam plus four small
-  self-tapping screws driven in from access holes near the front dome.
-  This replaces the original single-hollow-sphere design, which needed
-  heavy internal supports and was near-impossible to clean out — printing
-  each half with its flat parting face down on the bed keeps both domes
-  fully self-supporting.
-- The screen window is a **separate** clear PETG/acrylic disc
-  (`screen_window()` module) that sits in a stepped rabbet over the
-  display — diffusion PETG can't go over the actual AMOLED without
-  blurring it, so only the surrounding bezel ring is printed in the glow
-  material.
+- **Split into two printable halves** (front: display module pocket + mic
+  gap + button holes; back: flat base + USB-C + most of the interior),
+  joined by a tongue-and-groove seam plus four small self-tapping screws
+  driven in from access holes near the front dome. This replaces the
+  original single-hollow-sphere design, which needed heavy internal
+  supports and was near-impossible to clean out — printing each half with
+  its flat parting face down on the bed keeps both domes fully
+  self-supporting.
 
-Validated with `openscad` (installed via apt for this): both halves render
-as `Simple: yes` manifold solids with no part poking outside the outer
-sphere. Render either half or the assembled preview with:
+**Mounting changed once the physical module arrived**: the
+ESP32-S3-Touch-AMOLED-1.75C turns out to be sold as a fully-assembled
+round module with its own metal bezel and glass (confirmed from
+Waveshare's outline-dimension drawing: Φ55mm OD, Φ48.96mm glass,
+Φ43.76mm active area, 15.05mm thick) — not a bare rectangular PCB, and it
+has **no mounting screws** on the back. So the earlier design's
+board-footprint/corner-standoff/screw-mount logic and the separate clear
+acrylic window insert are both gone — the module just drops into a
+stepped circular pocket (`module_pocket_cut()`) from the back and seats
+against a shoulder, held by friction plus the pocket's fit. The module's
+own glass shows through a narrower through-hole that hides its metal rim
+behind the shell material.
+
+**A real size constraint came out of this**: a 55mm module is large
+relative to a 92mm ball, and a sphere's cross-section narrows quickly
+near the pole. Seating the module close to the outer surface would make
+its pocket wider than the ball's cross-section at that depth — i.e. it
+would blow out the side of the shell instead of sitting in a clean
+socket. The fix was recessing the module ~10mm behind the outer surface
+(`window_step_depth = 10`, leaving ~4mm of shell material around the
+pocket's rim at its narrowest point) rather than the ~1.5mm originally
+assumed. Practically, this means the display sits in a noticeably
+recessed socket rather than flush with the ball's surface — if that's
+not the look you want, the fix is a bigger `sphere_od`, not a smaller
+`window_step_depth` (shrinking that number just breaks the geometry).
+
+Validated with `openscad`: both halves render as `Simple: yes` manifold
+solids with no part poking outside the outer sphere. Render either half
+or the assembled preview (now includes a simple mock cylinder standing in
+for the module, just to sanity-check the fit visually) with:
 
 ```bash
 openscad -D 'PART="front"' -o front.stl bedside_ball_enclosure.scad
 openscad -D 'PART="back"' -o back.stl bedside_ball_enclosure.scad
-openscad -D 'PART="window"' -o window.stl bedside_ball_enclosure.scad
 openscad bedside_ball_enclosure.scad   # opens the assembled preview in the GUI
 ```
 
 **Open items before printing final parts** (all called out as `TODO
 verify` comments in the file itself):
-- Board footprint, mounting hole positions, and screen module diameter are
-  placeholder measurements — measure the actual PCB with calipers once it
-  arrives and adjust `board_w`, `board_d`, `board_mount_holes`,
-  `window_d`/`window_step_d`.
+- `window_step_depth` (module recess depth) is a geometrically-valid
+  first pass, not a measured value — Waveshare's drawing doesn't give the
+  exact rim-to-glass offset, so tune after a test fit.
+- Mic/button hole depth (`z0` in `mic_gap_cut()`/`button_holes_cut()`) is
+  a guess at how far along the module's 15mm thickness those ports sit —
+  worth checking against the physical module before printing final parts.
 - `board_tilt` (currently 25°) needs confirming against the actual
   nightstand/bed height once the unit is in place.
 - Tongue/groove and screw-boss clearances (`lip_clearance`, `boss_od`,
   etc.) are reasonable first-pass values for PETG — expect to tune after
   a test print.
+- `module_pocket_clearance` (0.6mm) is an untested first guess for how
+  loosely/snugly the module drops into its pocket.
 
 ## ESPHome firmware
 
@@ -134,9 +159,10 @@ in the file itself):
 
 1. Get a clear photo/read of the ADC (ES7210) schematic block to confirm
    the mic I2S data-in pin.
-2. Verify board footprint/mounting-hole dimensions once the physical
-   board is in hand, and confirm `board_tilt` against the real
-   nightstand/bed height.
-3. Sort out CST9217 touch driver support and the PWR/AXP2101 button.
-4. Test-print the two enclosure halves, tune joint clearances, then print
-   final parts in diffusion PETG (shell) + clear PETG/acrylic (window).
+2. Sort out CST9217 touch driver support and the PWR/AXP2101 button.
+3. Test-print the two enclosure halves, check the module actually seats
+   and shows through the window opening correctly, tune
+   `window_step_depth`/`module_pocket_clearance`/joint clearances as
+   needed, then print final parts in diffusion PETG.
+4. Confirm `board_tilt` against the real nightstand/bed height once the
+   unit is assembled.
