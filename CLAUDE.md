@@ -2,21 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Repository state (read this first)
+## Repository state
 
-The repository currently contains only a single zip archive at the root
-(`PeranoCook_PWA 2025-08-26 10_25_32.zip`) — there is no extracted source tree
-checked in. Before editing anything, unzip it into the repo root:
-
-```bash
-unzip -o "PeranoCook_PWA 2025-08-26 10_25_32.zip" -d .
-```
-
-This produces the actual app: `index.html`, `app.js`, `styles.css`, `sw.js`,
-`manifest.webmanifest`, and `icons/`. If you make changes, re-zip and replace
-the archive (or, if asked, replace the zip with the extracted files as the
-tracked source — that's a structural decision, so check with the user before
-doing it).
+The app's source (`index.html`, `app.js`, `styles.css`, `sw.js`,
+`manifest.webmanifest`, `icons/`) is tracked directly at the repo root — edit
+these files in place. (Earlier revisions of this repo shipped the source as a
+zip archive instead; that archive has since been extracted and removed in
+favor of tracking the real files.)
 
 ## What this is
 

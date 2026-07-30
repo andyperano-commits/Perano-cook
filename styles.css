@@ -1,0 +1,27 @@
+
+:root{ --bg:#f9fafb; --fg:#0f172a; --muted:#64748b; --card:#ffffff; --accent:#16a34a; --line:#e5e7eb;}
+*{ box-sizing:border-box; }
+html,body{ margin:0; padding:0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif; background:var(--bg); color:var(--fg); }
+header{ position:sticky; top:0; background:var(--card); border-bottom:1px solid var(--line); padding:12px 16px; z-index:10; }
+h1{ margin:0; font-size:20px; }
+nav.tabs{ display:flex; gap:8px; padding:8px 16px; background:var(--card); border-bottom:1px solid var(--line); position:sticky; top:48px; z-index:9; }
+nav.tabs button{ padding:10px 12px; border-radius:10px; border:1px solid var(--line); background:#fff; color:#111; cursor:pointer; }
+nav.tabs button.active{ background:var(--accent); color:#fff; border-color:var(--accent); }
+.container{ padding:16px; max-width:920px; margin:0 auto; }
+.card{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; margin-bottom:12px; }
+.grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(240px,1fr)); gap:12px; }
+.input, textarea, select{ width:100%; padding:10px; border:1px solid var(--line); border-radius:10px; background:#fff; }
+textarea{ min-height:100px; }
+.actions{ display:flex; gap:8px; flex-wrap:wrap; }
+button.primary{ background:var(--accent); color:#fff; border:none; padding:10px 14px; border-radius:10px; cursor:pointer; }
+button.ghost{ background:#fff; border:1px solid var(--line); padding:10px 14px; border-radius:10px; cursor:pointer; }
+.badge{ display:inline-block; background:#f1f5f9; color:#0f172a; padding:4px 8px; border-radius:999px; margin-right:6px; font-size:12px; }
+.small{ font-size:12px; color:var(--muted); }
+.list-check li{ list-style:none; display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px dashed var(--line); }
+.list-check input{ transform:scale(1.2); }
+.week{ display:grid; grid-template-columns: repeat(7, 1fr); gap:8px; }
+.day{ background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px; min-height:160px; display:flex; flex-direction:column; gap:6px; }
+.day h4{ margin:0 0 6px; }
+.recipe-chip{ background:#f0fdf4; border:1px solid #bbf7d0; padding:6px 8px; border-radius:8px; font-size:12px; }
+footer.info{ text-align:center; padding:24px; color:var(--muted); }
+.hidden{ display:none !important; }
