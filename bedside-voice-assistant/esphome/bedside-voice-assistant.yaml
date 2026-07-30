@@ -28,6 +28,15 @@ esphome:
   friendly_name: Bedside Voice Assistant
   min_version: 2025.6.0
 
+# Custom CST9217 touch driver, ported from Waveshare's own SensorLib since
+# ESPHome has no built-in component for this chip — see
+# components/cst9217/touchscreen/cst9217_touchscreen.cpp for the port
+# itself and its "untested on hardware" caveat.
+external_components:
+  - source:
+      type: local
+      path: components
+
 esp32:
   board: esp32-s3-devkitc-1
   flash_size: 32MB
@@ -112,23 +121,16 @@ display:
     update_interval: 1s
 
 # ------------------------------------------------------------------
-# Touch — the real chip on this board is a CST9217. ESPHome 2026.6.5 has
-# no `cst9217` touchscreen component (checked directly against the
-# installed component list — only cst816/cst226 exist). `cst816` below is
-# still just a placeholder, and now a more doubtful one than before:
-# Waveshare's own SensorLib ships a *separate* CST92xx driver
-# (TouchDrvCST92xx.cpp) with its own register map distinct from CST816's,
-# which suggests these chips are NOT register-compatible — so this will
-# likely need a real cst9217 driver (a newer ESPHome release, or porting
-# Waveshare's driver into an external_component) rather than working by
-# coincidence. Reset/interrupt pins are confirmed directly from
-# Waveshare's schematic netlist and example pin_config.h (GPIO2 =
-# TP_RESET, GPIO11 = TP_INT — an earlier draft of this file had the
-# interrupt pin wrong as GPIO10, which is actually the mic's I2S data
-# line, not touch).
+# Touch — the real chip on this board is a CST9217, which ESPHome has no
+# built-in driver for. `cst9217` here is the custom driver under
+# components/cst9217/, ported from Waveshare's own SensorLib
+# (TouchDrvCST92xx.cpp) — see that file for the protocol details and its
+# "untested on hardware" caveat. Reset/interrupt pins are confirmed
+# directly from Waveshare's schematic netlist and example pin_config.h
+# (GPIO2 = TP_RESET, GPIO11 = TP_INT).
 # ------------------------------------------------------------------
 touchscreen:
-  platform: cst816
+  platform: cst9217
   id: main_touch
   i2c_id: bus_i2c
   interrupt_pin: GPIO11

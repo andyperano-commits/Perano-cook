@@ -102,7 +102,9 @@ STT / Extended OpenAI / Piper TTS are all configured server-side in Home
 Assistant, not here — this device just streams mic audio in and plays
 speaker audio back), plus:
 - 466×466 round AMOLED display (CO5300 driver over QSPI)
-- Capacitive touchscreen
+- Capacitive touchscreen, via a custom `cst9217` driver (see
+  `components/cst9217/` and the open item below — written, not yet
+  compiler-verified)
 - LVGL UI: a `home_page` with a clock face, weather tile (pulled from a
   Home Assistant `weather.*` entity), and a "Lights Off" button calling
   `light.turn_off`; plus a `voice_status_page` that swaps in for the
@@ -173,13 +175,19 @@ itself):
   2026.6.5 has no `axp2101` component, so there's currently no
   implemented way to read this button's state from ESPHome; left
   unimplemented rather than wired to a wrong pin.
-- The touch controller is a CST9217; ESPHome 2026.6.5 has no dedicated
-  driver for it (only `cst816`/`cst226` exist). The config uses `cst816`
-  as a placeholder, and it's now a more doubtful one — Waveshare's own
-  SensorLib ships a *separate* CST92xx driver with its own register map,
-  suggesting CST816 and CST9217 aren't register-compatible. Likely needs
-  either a newer ESPHome release or porting Waveshare's driver into an
-  `external_component` before touch actually works.
+- **Touch now has a real driver, but it's untested.** `esphome/components/cst9217/`
+  is a custom `external_component` (not built into ESPHome, which has no
+  CST9217 support) ported from Waveshare's own SensorLib
+  (`TouchDrvCST92xx.cpp`) — the register protocol (point-read at 0xD000,
+  chip-ID probe at 0xD1FC/0xD204, 5-byte-per-point parsing) is transcribed
+  faithfully from their reference driver. It passes `esphome config`
+  (the Python/codegen layer), but **the actual C++ has never compiled** —
+  this sandbox's `esphome compile` consistently fails downloading the
+  ESP-IDF toolchain (a proxy/network issue, unrelated to the code) before
+  it ever reaches the point of building this file. **You'll need to run
+  the first real `esphome compile` locally and fix whatever C++ errors
+  come back** — treat this port as "written against the spec, not yet
+  proven against a compiler."
 - Confirm whether the other N16R8 voice satellites use on-device wake
   word (`micro_wake_word:`) or delegate to the Assist pipeline
   (`use_wake_word: false`, what this config currently does) and match
@@ -193,12 +201,15 @@ itself):
 
 ## Next steps
 
-1. Sort out CST9217 touch driver support (likely an `external_component`
-   porting Waveshare's CST92xx driver) and the PWR/AXP2101 button.
-2. Test-print the two enclosure halves, check the module actually seats
+1. Run `esphome compile bedside-voice-assistant.yaml` locally, fix any
+   C++ errors in the custom `cst9217` driver, flash, and confirm touch
+   actually registers taps correctly (positions may need
+   `mirror_x`/`mirror_y`/`swap_xy` tweaks even once it compiles).
+2. Sort out the PWR/AXP2101 button.
+3. Test-print the two enclosure halves, check the module actually seats
    and shows through the window opening correctly, tune
    `window_step_depth`/`module_pocket_clearance`/joint clearances as
    needed, then print final parts in diffusion PETG.
-3. Confirm `board_tilt` against the real nightstand/bed height once the
+4. Confirm `board_tilt` against the real nightstand/bed height once the
    unit is assembled.
 4. Write the Home Assistant automation for `esphome.bedside_alarm_fired`.
