@@ -146,34 +146,40 @@ the ESP-IDF toolchain, which failed on this sandbox's proxied network
 validity of the YAML but the first `esphome compile` on real hardware
 should be watched for anything the schema validator can't catch.
 
-**GPIO pins were re-derived from the real 1.75C schematic** (photos of
-the schematic pages and PCB layout), not just web search — this caught
-and fixed real errors from the first draft, which had guessed pins that
-actually collided with the true I2S/touch assignments (e.g. it thought
-the QSPI clock/data lines used GPIO9-13, which are actually the I2S BCLK
-and touch pins). Confirmed directly off legible schematic labels:
-- I2C: SDA=GPIO15, SCL=GPIO14 (shared bus for codec, mic ADC, IMU)
+**GPIO pins are now cross-confirmed from Waveshare's own official
+sources** — the schematic PDF/netlist and the `pin_config.h` from their
+example firmware, both at
+[waveshareteam/ESP32-S3-Touch-AMOLED-1.75C](https://github.com/waveshareteam/ESP32-S3-Touch-AMOLED-1.75C)
+— not just photo transcription or web search. This resolved the one pin
+that couldn't previously be confirmed at all, and caught one remaining
+error: the touch interrupt is GPIO11, not GPIO10 (GPIO10 turned out to be
+the mic's own I2S data line). Confirmed pins:
+- I2C: SDA=GPIO15, SCL=GPIO14 (shared bus for touch, codec, mic ADC, IMU,
+  and the AXP2101 PMIC)
 - Display QSPI: SIO0-3=GPIO4/5/6/7, clock=GPIO38, CS=GPIO12, reset=GPIO1
-- Touch: reset=GPIO2 (TP_RESET), interrupt=GPIO10 (TP_INT)
+- Touch: reset=GPIO2 (TP_RESET), interrupt=GPIO11 (TP_INT)
 - Audio: I2S LRCLK=GPIO45, BCLK=GPIO9, MCLK=GPIO16, speaker DOUT=GPIO8,
-  speaker-amp enable (PA_CTRL)=GPIO46
-- BOOT button = GPIO0 (standard S3 strap pin, matches the KEYS schematic
-  block)
+  mic DIN=GPIO10 (I2S_ASDOUT), speaker-amp enable (PA_CTRL)=GPIO46
+- BOOT button = GPIO0 (confirmed via the KEYS schematic block: Key1 ties
+  directly to GPIO0)
 
-**Open items before flashing** (all called out as `TODO verify` comments
-in the file itself):
-- The mic's I2S data-in pin (ESP32 <- ES7210) wasn't legible in the photo
-  of the ADC schematic block — `GPIO3` in the config is a placeholder,
-  not a transcribed value. Needs a clearer photo of that block.
-- The PWR button (Key2) isn't a plain ESP32 GPIO at all — it's wired to
-  the AXP2101 PMIC's PWRON pin for hardware power sequencing. ESPHome
+**Open items before flashing** (all called out as comments in the file
+itself):
+- The PWR button (Key2) isn't a plain ESP32 GPIO at all — the schematic
+  shows it wired through a transistor into the AXP2101 PMIC's PWRON pin
+  for hardware power sequencing, with press-state read back over I2C
+  (`AXP2101_IRQ_PKEY_SHORT`/`LONG` register bits, confirmed in Waveshare's
+  own AXP2101 example code) rather than a dedicated GPIO. ESPHome
   2026.6.5 has no `axp2101` component, so there's currently no
   implemented way to read this button's state from ESPHome; left
   unimplemented rather than wired to a wrong pin.
 - The touch controller is a CST9217; ESPHome 2026.6.5 has no dedicated
   driver for it (only `cst816`/`cst226` exist). The config uses `cst816`
-  as an unconfirmed placeholder — check for a newer ESPHome release or an
-  external_component before relying on touch input.
+  as a placeholder, and it's now a more doubtful one — Waveshare's own
+  SensorLib ships a *separate* CST92xx driver with its own register map,
+  suggesting CST816 and CST9217 aren't register-compatible. Likely needs
+  either a newer ESPHome release or porting Waveshare's driver into an
+  `external_component` before touch actually works.
 - Confirm whether the other N16R8 voice satellites use on-device wake
   word (`micro_wake_word:`) or delegate to the Assist pipeline
   (`use_wake_word: false`, what this config currently does) and match
@@ -187,12 +193,12 @@ in the file itself):
 
 ## Next steps
 
-1. Get a clear photo/read of the ADC (ES7210) schematic block to confirm
-   the mic I2S data-in pin.
-2. Sort out CST9217 touch driver support and the PWR/AXP2101 button.
-3. Test-print the two enclosure halves, check the module actually seats
+1. Sort out CST9217 touch driver support (likely an `external_component`
+   porting Waveshare's CST92xx driver) and the PWR/AXP2101 button.
+2. Test-print the two enclosure halves, check the module actually seats
    and shows through the window opening correctly, tune
    `window_step_depth`/`module_pocket_clearance`/joint clearances as
    needed, then print final parts in diffusion PETG.
-4. Confirm `board_tilt` against the real nightstand/bed height once the
+3. Confirm `board_tilt` against the real nightstand/bed height once the
    unit is assembled.
+4. Write the Home Assistant automation for `esphome.bedside_alarm_fired`.

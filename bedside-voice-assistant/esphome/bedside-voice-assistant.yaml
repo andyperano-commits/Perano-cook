@@ -8,16 +8,18 @@
 #
 # STATUS: first-draft config, not yet flashed to real hardware.
 #
-# GPIO assignments below are transcribed directly from the real 1.75C
-# schematic (the ESP32-S3 GPIO table on schematic page 1, plus the Codec/
-# ADC/PA&SPEAKER&MIC/KEYS blocks) rather than guessed from web search —
-# a meaningful upgrade over the first draft of this file, which had
-# several pins wrong (e.g. it guessed the QSPI clock/data lines sat on
-# GPIO9-13, which actually collided with the real I2S and touch pins).
-# Transcribing dense schematic text from photos still has failure modes,
-# so anything not directly confirmed by a clearly legible label is still
-# flagged TODO — see the two open items called out inline below (mic
-# I2S data-in pin, and the PWR button/AXP2101 wiring).
+# GPIO assignments are now cross-confirmed from Waveshare's own official
+# sources — the schematic PDF and netlist plus the pin_config.h from their
+# example firmware, both at github.com/waveshareteam/ESP32-S3-Touch-AMOLED-1.75C
+# — rather than guessed from web search or transcribed from photos. This
+# caught two remaining errors from the photo-transcription pass: the touch
+# interrupt pin is GPIO11, not GPIO10 (GPIO10 is actually the mic's I2S
+# data line), which also resolved the one pin this file couldn't previously
+# confirm at all. The two sources disagree on one pin (pin_config.h claims
+# LCD_RESET and TP_RST are both GPIO2; the schematic netlist clearly shows
+# them as two separate nets, GPIO1 and GPIO2) — the schematic wins as the
+# ground truth of what's actually wired, and this file already had that
+# one right.
 
 
 
@@ -110,22 +112,26 @@ display:
     update_interval: 1s
 
 # ------------------------------------------------------------------
-# Touch — the real chip on this board is a CST9217. ESPHome 2026.6.5
-# has no `cst9217` touchscreen component (checked directly against the
-# installed component list — only cst816/cst226 exist). Using `cst816`
-# here as a placeholder since some Waveshare boards' factory firmware
-# reuses that register map for later CST-family chips, but this is
-# UNCONFIRMED for the 9217 specifically. TODO: check for a newer
-# ESPHome release with cst9217 support, or an external_component, before
-# relying on touch input.
-# Reset/interrupt pins are confirmed from the schematic's GPIO table
-# (GPIO2 = TP_RESET, GPIO10 = TP_INT).
+# Touch — the real chip on this board is a CST9217. ESPHome 2026.6.5 has
+# no `cst9217` touchscreen component (checked directly against the
+# installed component list — only cst816/cst226 exist). `cst816` below is
+# still just a placeholder, and now a more doubtful one than before:
+# Waveshare's own SensorLib ships a *separate* CST92xx driver
+# (TouchDrvCST92xx.cpp) with its own register map distinct from CST816's,
+# which suggests these chips are NOT register-compatible — so this will
+# likely need a real cst9217 driver (a newer ESPHome release, or porting
+# Waveshare's driver into an external_component) rather than working by
+# coincidence. Reset/interrupt pins are confirmed directly from
+# Waveshare's schematic netlist and example pin_config.h (GPIO2 =
+# TP_RESET, GPIO11 = TP_INT — an earlier draft of this file had the
+# interrupt pin wrong as GPIO10, which is actually the mic's I2S data
+# line, not touch).
 # ------------------------------------------------------------------
 touchscreen:
   platform: cst816
   id: main_touch
   i2c_id: bus_i2c
-  interrupt_pin: GPIO10
+  interrupt_pin: GPIO11
   reset_pin: GPIO2
   transform:
     mirror_x: false
@@ -158,19 +164,20 @@ audio_dac:
     id: bedside_dac
     i2c_id: bus_i2c
 
-# TODO verify: GPIO8 is confirmed as I2S_DSDIN into the ES8311 codec
-# (speaker path, ESP32 -> codec), read directly off the Codec schematic
-# block. The mic's data line back OUT of the ES7210 (ESP32 <- mic) is
-# NOT clearly legible in the ADC schematic block's photo — it's labeled
-# SDOUT1/TDMOUT there but the GPIO number wasn't readable. GPIO3 below
-# is a placeholder, not a transcribed value; get a clearer photo of the
-# ADC (ES7210) block before flashing.
+# GPIO8 = I2S_DSDIN into the ES8311 codec (speaker path, ESP32 -> codec).
+# GPIO10 = I2S_ASDOUT out of the ES7210 (mic path, ESP32 <- mic) — this
+# was the one pin the schematic photos couldn't confirm; now confirmed
+# from both the schematic netlist (GPIO10 tied to net "I2S_ASDOUT") and
+# Waveshare's own pin_config.h (`PIN_ES7210_DIN 10`). Note this is NOT
+# GPIO10 as previously assigned to the touch interrupt — that was the
+# error the mislabeled pin caused; touch interrupt is actually GPIO11
+# (see the touchscreen: block above).
 microphone:
   - platform: i2s_audio
     id: bedside_mic
     i2s_audio_id: bus_i2s
     adc_type: external
-    i2s_din_pin: GPIO3   # TODO verify — not yet confirmed from schematic
+    i2s_din_pin: GPIO10
     channel: stereo      # dual mic array
     bits_per_sample: 32bit
 
