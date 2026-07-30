@@ -78,10 +78,18 @@ window_step_depth = 1.6;   // rabbet depth, mm
 window_thickness  = 2.0;   // clear PETG/acrylic window disc thickness, mm
 window_fit_clearance = 0.3; // radial clearance so the disc drops into the rabbet
 
-// --- Mic gap (dual mic pickup, near true top of the shell) ---
-mic_gap_w    = 16;   // slot length, mm
+// --- Mic gap (dual mic pickup) ---
+// Per the real board layout: MIC1 and MIC2 sit at opposite corners of one
+// side of the board (not a single slot at the pole, as an earlier draft
+// of this file assumed before the real layout was available) — angles
+// below are in the board's own local frame, mirroring each other across
+// the local X axis. TODO verify against the actual layout's exact corner
+// offset once the board is in hand; these angles put them near the board
+// perimeter at roughly the same spread as the real photo.
+mic_gap_w    = 10;   // slot length, mm (smaller now there are two)
 mic_gap_h    = 2.6;  // slot width, mm (matches wall so it fully perforates)
-mic_gap_corner_r = 1.2;
+mic_gap_corner_r = 1.0;
+mic_angles = [150, 210]; // degrees around the board's local perimeter
 
 // --- USB-C cutout (back half, opposite the screen side, near the base) ---
 usbc_w = 10.5;  // cutout width, mm (panel-mount USB-C clearance)
@@ -91,13 +99,14 @@ usbc_height_offset = 10; // mm above the flat base cut, cutout center height
 usbc_azimuth = 180;      // degrees in world XY, 0 = toward bed (+Y), 180 = away
 
 // --- BOOT / PWR button access holes ---
-// Positioned around the board footprint's edge in the board's own local
-// frame, drilled radially outward through the shell. TODO verify actual
-// button positions on the PCB edge.
+// Per the real board layout: both side buttons (Key1/BOOT, Key2/PWR) sit
+// on the same edge of the board, opposite the mics — angles below mirror
+// mic_angles across the local X axis. TODO verify exact offset once the
+// board is in hand.
 button_hole_d      = 4.0;   // through-hole diameter, mm
 button_countersink_d = 7.0; // shallow finger-access countersink on outside
 button_countersink_depth = 1.0;
-button_angles = [50, 130];  // degrees around the board's local perimeter
+button_angles = [30, -30];  // degrees around the board's local perimeter — PWR, BOOT
 
 // --- Split-plane tongue & groove joint ---
 split_offset   = 2;    // mm, split plane offset from sphere center along the
@@ -193,9 +202,20 @@ module screen_window_cut() {
 }
 
 module mic_gap_cut() {
-    // true top of the sphere (world +Z pole), independent of board tilt
-    translate([0, 0, sphere_r - wall/2])
-        rounded_rect_solid(mic_gap_w, mic_gap_h, mic_gap_corner_r, wall*3);
+    // Two slots near the board's perimeter, mirrored across the local X
+    // axis to match the real MIC1/MIC2 corner placement (see
+    // mic_angles above) — same placement style as button_holes_cut().
+    board_frame() {
+        board_r = sqrt(board_w*board_w + board_d*board_d) / 2 + board_clearance;
+        z0 = sphere_r - board_face_depth - wall/2;
+        for (a = mic_angles) {
+            x = board_r * cos(a);
+            y = board_r * sin(a);
+            translate([x, y, z0])
+                rotate([0, 0, a])
+                    rounded_rect_solid(mic_gap_w, mic_gap_h, mic_gap_corner_r, wall*3);
+        }
+    }
 }
 
 module rounded_rect_solid(w, h, r, extrude_h) {

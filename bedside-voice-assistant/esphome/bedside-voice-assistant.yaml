@@ -6,15 +6,20 @@
 # of the same voice_assistant satellite role as the plain ESP32-S3-N16R8
 # nodes already ordered.
 #
-# STATUS: first-draft config, not yet flashed to real hardware. Several
-# GPIO numbers below are sourced from public Waveshare docs/community
-# configs for the sibling "ESP32-S3-Touch-AMOLED-1.75" board (search
-# results only — docs.waveshare.com and devices.esphome.io blocked this
-# session) and are marked "TODO verify" — confirm every one against the
-# actual 1.75C schematic/wiki before flashing:
-#   https://www.waveshare.com/wiki/ESP32-S3-Touch-AMOLED-1.75C
-#   https://docs.waveshare.com/ESP32-S3-Touch-AMOLED-1.75C
-# The QSPI display data-lane pins in particular are unverified placeholders.
+# STATUS: first-draft config, not yet flashed to real hardware.
+#
+# GPIO assignments below are transcribed directly from the real 1.75C
+# schematic (the ESP32-S3 GPIO table on schematic page 1, plus the Codec/
+# ADC/PA&SPEAKER&MIC/KEYS blocks) rather than guessed from web search —
+# a meaningful upgrade over the first draft of this file, which had
+# several pins wrong (e.g. it guessed the QSPI clock/data lines sat on
+# GPIO9-13, which actually collided with the real I2S and touch pins).
+# Transcribing dense schematic text from photos still has failure modes,
+# so anything not directly confirmed by a clearly legible label is still
+# flagged TODO — see the two open items called out inline below (mic
+# I2S data-in pin, and the PWR button/AXP2101 wiring).
+
+
 
 esphome:
   name: bedside-voice-assistant
@@ -64,39 +69,41 @@ wifi:
 captive_portal:
 
 # ------------------------------------------------------------------
-# I2C — touch controller, AXP2101 PMIC, PCF85063 RTC, QMI8658 IMU all
-# share this bus per public pinout notes. TODO verify SDA/SCL numbers.
+# I2C — shared bus for the ES8311 codec, ES7210 mic ADC, and QMI8658
+# IMU. Confirmed directly from the schematic: both the Codec and ADC
+# blocks label their SCL/SDA wires "GPIO14/ESP32_SCL" and
+# "GPIO15/ESP32_SDA".
 # ------------------------------------------------------------------
 i2c:
   id: bus_i2c
-  sda: GPIO15   # TODO verify
-  scl: GPIO14   # TODO verify
+  sda: GPIO15
+  scl: GPIO14
   frequency: 400kHz
 
 # ------------------------------------------------------------------
-# Display — 466x466 round AMOLED, CO5300 driver over QSPI.
-# TODO verify: all four QSPI data lines + clock are placeholders here,
-# only reset/cs were surfaced by public search results. Do not flash
-# until these are confirmed against the schematic — wrong QSPI pins
-# risk driving lines that conflict with PSRAM/flash on the S3.
+# Display — 466x466 round AMOLED, CO5300 driver over QSPI. Pins below
+# read off the schematic's GPIO table: GPIO4-7 = QSPI SIO0-3, GPIO38 =
+# QSPI clock, GPIO12 = LCD_CS, GPIO1 = LCD_RESET. (GPIO13 = LCD_TE,
+# tearing-effect sync, isn't wired here — the mipi_spi platform doesn't
+# need it.)
 # ------------------------------------------------------------------
 spi:
   id: bus_spi
   type: quad
-  clk_pin: GPIO10      # TODO verify (QSPI SCK)
+  clk_pin: GPIO38
   data_pins:
-    - GPIO11           # TODO verify (QSPI D0)
-    - GPIO13           # TODO verify (QSPI D1)
-    - GPIO9            # TODO verify (QSPI D2)
-    - GPIO12           # TODO verify (QSPI D3)
+    - GPIO4   # QSPI SIO0
+    - GPIO5   # QSPI SIO1
+    - GPIO6   # QSPI SIO2
+    - GPIO7   # QSPI SIO3
 
 display:
   - platform: mipi_spi
     id: main_display
     model: CO5300
     spi_id: bus_spi
-    cs_pin: GPIO21      # TODO verify
-    reset_pin: GPIO39   # TODO verify
+    cs_pin: GPIO12
+    reset_pin: GPIO1
     dimensions: 466x466
     color_order: RGB
     invert_colors: false
@@ -111,13 +118,15 @@ display:
 # UNCONFIRMED for the 9217 specifically. TODO: check for a newer
 # ESPHome release with cst9217 support, or an external_component, before
 # relying on touch input.
+# Reset/interrupt pins are confirmed from the schematic's GPIO table
+# (GPIO2 = TP_RESET, GPIO10 = TP_INT).
 # ------------------------------------------------------------------
 touchscreen:
   platform: cst816
   id: main_touch
   i2c_id: bus_i2c
-  interrupt_pin: GPIO40  # TODO verify
-  reset_pin: GPIO41      # TODO verify
+  interrupt_pin: GPIO10
+  reset_pin: GPIO2
   transform:
     mirror_x: false
     mirror_y: false
@@ -129,10 +138,14 @@ touchscreen:
 # audio_adc/audio_dac platform components below; the actual PCM stream
 # in/out runs over the shared I2S bus declared here.
 # ------------------------------------------------------------------
+# LRCLK/BCLK/MCLK confirmed from the Codec (ES8311) schematic block,
+# which labels these wires directly: GPIO45=I2S_LRCK, GPIO9=I2S_SCLK,
+# GPIO16=I2S_MCLK.
 i2s_audio:
   id: bus_i2s
-  i2s_lrclk_pin: GPIO4   # TODO verify (shared WS/LRCLK for mic + speaker)
-  i2s_bclk_pin: GPIO5    # TODO verify (shared BCLK)
+  i2s_lrclk_pin: GPIO45
+  i2s_bclk_pin: GPIO9
+  i2s_mclk_pin: GPIO16
 
 audio_adc:
   - platform: es7210
@@ -145,13 +158,19 @@ audio_dac:
     id: bedside_dac
     i2c_id: bus_i2c
 
+# TODO verify: GPIO8 is confirmed as I2S_DSDIN into the ES8311 codec
+# (speaker path, ESP32 -> codec), read directly off the Codec schematic
+# block. The mic's data line back OUT of the ES7210 (ESP32 <- mic) is
+# NOT clearly legible in the ADC schematic block's photo — it's labeled
+# SDOUT1/TDMOUT there but the GPIO number wasn't readable. GPIO3 below
+# is a placeholder, not a transcribed value; get a clearer photo of the
+# ADC (ES7210) block before flashing.
 microphone:
   - platform: i2s_audio
     id: bedside_mic
     i2s_audio_id: bus_i2s
     adc_type: external
-    i2s_din_pin: GPIO16  # sourced from search results (ES7210 DIN) — moved
-                          # off GPIO10 which the QSPI clk above also claims
+    i2s_din_pin: GPIO3   # TODO verify — not yet confirmed from schematic
     channel: stereo      # dual mic array
     bits_per_sample: 32bit
 
@@ -159,18 +178,16 @@ speaker:
   - platform: i2s_audio
     id: bedside_speaker
     i2s_audio_id: bus_i2s
-    i2s_dout_pin: GPIO8  # sourced from search results (ES8311 DOUT)
+    i2s_dout_pin: GPIO8  # confirmed: I2S_DSDIN on the Codec schematic block
     dac_type: external
 
-# Speaker amplifier enable line — search results list this as GPIO46 on
-# the sibling 1.75 board, but GPIO46 is also claimed by the QSPI D3 line
-# above and is an input-only strapping pin on the S3, so it can't drive
-# an enable output anyway. Moved to GPIO17 as a placeholder; TODO verify
-# the real pin against the schematic.
+# Speaker amplifier enable — confirmed from both the schematic's GPIO
+# table (GPIO46 = PA_CTRL) and the PA&SPEAKER&MIC block, which shows
+# GPIO46 wired straight into the amp IC's CTRL pin.
 output:
   - platform: gpio
     id: speaker_enable
-    pin: GPIO17
+    pin: GPIO46
 
 switch:
   - platform: template
@@ -207,17 +224,22 @@ binary_sensor:
   - platform: gpio
     name: "Boot Button"
     pin:
-      number: GPIO0   # ESP32-S3 BOOT strap pin, standard across the family
+      number: GPIO0   # ESP32-S3 BOOT strap pin, standard across the family —
+                      # confirmed by the KEYS schematic block (Key1/BOOT
+                      # wired to GPIO0, same as the earlier draft assumed)
       inverted: true
     on_press:
       - voice_assistant.start
-  - platform: gpio
-    name: "Power Button"
-    pin:
-      number: GPIO6   # TODO verify (side PWR button per public docs)
-      inverted: true
-    on_press:
-      - voice_assistant.stop
+
+# TODO: the PWR button (Key2 in the KEYS schematic block) is NOT a plain
+# ESP32 GPIO — it's wired to the AXP2101 PMIC's PWRON pin for hardware
+# power sequencing (CHIP_PU/PWRON/PWROK), which the PMIC itself exposes
+# back to the ESP32 over I2C/IRQ rather than a dedicated GPIO. ESPHome
+# 2026.6.5 has no `axp2101` component (checked directly against the
+# installed component list), so there's no ready-made way to read this
+# button's press state from ESPHome yet. Leaving it unimplemented rather
+# than wiring a `binary_sensor: platform: gpio` to a pin that isn't
+# actually where this signal lives.
 
 # ------------------------------------------------------------------
 # Home Assistant data feeding the display: current time, local weather,
