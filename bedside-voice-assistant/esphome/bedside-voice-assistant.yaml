@@ -1,0 +1,361 @@
+# Bedside Voice Assistant — Waveshare ESP32-S3-Touch-AMOLED-1.75C
+#
+# Round AMOLED bedside satellite for the existing Jarvis pipeline:
+#   Voice -> Faster Whisper -> HA Assist -> Extended OpenAI Conversation -> Piper -> Speaker
+# This node adds a screen (clock + weather) and a lights-off button on top
+# of the same voice_assistant satellite role as the plain ESP32-S3-N16R8
+# nodes already ordered.
+#
+# STATUS: first-draft config, not yet flashed to real hardware.
+#
+# GPIO assignments below are transcribed directly from the real 1.75C
+# schematic (the ESP32-S3 GPIO table on schematic page 1, plus the Codec/
+# ADC/PA&SPEAKER&MIC/KEYS blocks) rather than guessed from web search —
+# a meaningful upgrade over the first draft of this file, which had
+# several pins wrong (e.g. it guessed the QSPI clock/data lines sat on
+# GPIO9-13, which actually collided with the real I2S and touch pins).
+# Transcribing dense schematic text from photos still has failure modes,
+# so anything not directly confirmed by a clearly legible label is still
+# flagged TODO — see the two open items called out inline below (mic
+# I2S data-in pin, and the PWR button/AXP2101 wiring).
+
+
+
+esphome:
+  name: bedside-voice-assistant
+  friendly_name: Bedside Voice Assistant
+  min_version: 2025.6.0
+
+esp32:
+  board: esp32-s3-devkitc-1
+  flash_size: 32MB
+  variant: esp32s3
+  framework:
+    type: esp-idf
+    advanced:
+      enable_idf_experimental_features: true
+    sdkconfig_options:
+      CONFIG_SPIRAM: "y"
+      CONFIG_SPIRAM_MODE_OCT: "y"
+      CONFIG_SPIRAM_SPEED_80M: "y"
+      CONFIG_ESP32S3_DEFAULT_CPU_FREQ_240: "y"
+
+psram:
+  mode: octal
+  speed: 80MHz
+
+logger:
+  level: DEBUG
+  # audio/i2s logging is noisy at DEBUG; drop it back down
+  logs:
+    i2s_audio: INFO
+    esp-idf: WARN
+
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "Bedside Voice Assistant Fallback"
+    password: !secret fallback_ap_password
+
+captive_portal:
+
+# ------------------------------------------------------------------
+# I2C — shared bus for the ES8311 codec, ES7210 mic ADC, and QMI8658
+# IMU. Confirmed directly from the schematic: both the Codec and ADC
+# blocks label their SCL/SDA wires "GPIO14/ESP32_SCL" and
+# "GPIO15/ESP32_SDA".
+# ------------------------------------------------------------------
+i2c:
+  id: bus_i2c
+  sda: GPIO15
+  scl: GPIO14
+  frequency: 400kHz
+
+# ------------------------------------------------------------------
+# Display — 466x466 round AMOLED, CO5300 driver over QSPI. Pins below
+# read off the schematic's GPIO table: GPIO4-7 = QSPI SIO0-3, GPIO38 =
+# QSPI clock, GPIO12 = LCD_CS, GPIO1 = LCD_RESET. (GPIO13 = LCD_TE,
+# tearing-effect sync, isn't wired here — the mipi_spi platform doesn't
+# need it.)
+# ------------------------------------------------------------------
+spi:
+  id: bus_spi
+  type: quad
+  clk_pin: GPIO38
+  data_pins:
+    - GPIO4   # QSPI SIO0
+    - GPIO5   # QSPI SIO1
+    - GPIO6   # QSPI SIO2
+    - GPIO7   # QSPI SIO3
+
+display:
+  - platform: mipi_spi
+    id: main_display
+    model: CO5300
+    spi_id: bus_spi
+    cs_pin: GPIO12
+    reset_pin: GPIO1
+    dimensions: 466x466
+    color_order: RGB
+    invert_colors: false
+    update_interval: 1s
+
+# ------------------------------------------------------------------
+# Touch — the real chip on this board is a CST9217. ESPHome 2026.6.5
+# has no `cst9217` touchscreen component (checked directly against the
+# installed component list — only cst816/cst226 exist). Using `cst816`
+# here as a placeholder since some Waveshare boards' factory firmware
+# reuses that register map for later CST-family chips, but this is
+# UNCONFIRMED for the 9217 specifically. TODO: check for a newer
+# ESPHome release with cst9217 support, or an external_component, before
+# relying on touch input.
+# Reset/interrupt pins are confirmed from the schematic's GPIO table
+# (GPIO2 = TP_RESET, GPIO10 = TP_INT).
+# ------------------------------------------------------------------
+touchscreen:
+  platform: cst816
+  id: main_touch
+  i2c_id: bus_i2c
+  interrupt_pin: GPIO10
+  reset_pin: GPIO2
+  transform:
+    mirror_x: false
+    mirror_y: false
+
+# ------------------------------------------------------------------
+# Audio — ES7210 dual-mic ADC (with echo cancellation) + ES8311 codec
+# feeding the onboard speaker pads. The ES7210/ES8311 chips themselves
+# are controlled over I2C (gain, mute, sample format) via the
+# audio_adc/audio_dac platform components below; the actual PCM stream
+# in/out runs over the shared I2S bus declared here.
+# ------------------------------------------------------------------
+# LRCLK/BCLK/MCLK confirmed from the Codec (ES8311) schematic block,
+# which labels these wires directly: GPIO45=I2S_LRCK, GPIO9=I2S_SCLK,
+# GPIO16=I2S_MCLK.
+i2s_audio:
+  id: bus_i2s
+  i2s_lrclk_pin: GPIO45
+  i2s_bclk_pin: GPIO9
+  i2s_mclk_pin: GPIO16
+
+audio_adc:
+  - platform: es7210
+    id: bedside_adc
+    i2c_id: bus_i2c
+    bits_per_sample: 32bit
+
+audio_dac:
+  - platform: es8311
+    id: bedside_dac
+    i2c_id: bus_i2c
+
+# TODO verify: GPIO8 is confirmed as I2S_DSDIN into the ES8311 codec
+# (speaker path, ESP32 -> codec), read directly off the Codec schematic
+# block. The mic's data line back OUT of the ES7210 (ESP32 <- mic) is
+# NOT clearly legible in the ADC schematic block's photo — it's labeled
+# SDOUT1/TDMOUT there but the GPIO number wasn't readable. GPIO3 below
+# is a placeholder, not a transcribed value; get a clearer photo of the
+# ADC (ES7210) block before flashing.
+microphone:
+  - platform: i2s_audio
+    id: bedside_mic
+    i2s_audio_id: bus_i2s
+    adc_type: external
+    i2s_din_pin: GPIO3   # TODO verify — not yet confirmed from schematic
+    channel: stereo      # dual mic array
+    bits_per_sample: 32bit
+
+speaker:
+  - platform: i2s_audio
+    id: bedside_speaker
+    i2s_audio_id: bus_i2s
+    i2s_dout_pin: GPIO8  # confirmed: I2S_DSDIN on the Codec schematic block
+    dac_type: external
+
+# Speaker amplifier enable — confirmed from both the schematic's GPIO
+# table (GPIO46 = PA_CTRL) and the PA&SPEAKER&MIC block, which shows
+# GPIO46 wired straight into the amp IC's CTRL pin.
+output:
+  - platform: gpio
+    id: speaker_enable
+    pin: GPIO46
+
+switch:
+  - platform: template
+    name: "Speaker Enable"
+    id: speaker_enable_switch
+    internal: true
+    turn_on_action:
+      - output.turn_on: speaker_enable
+    turn_off_action:
+      - output.turn_off: speaker_enable
+
+# ------------------------------------------------------------------
+# Voice assistant — this node is just another satellite into the
+# existing Jarvis pipeline; Whisper/Extended OpenAI/Piper are all
+# configured server-side in the Home Assistant Assist pipeline, not
+# here. Wake word detection is delegated to that same Assist pipeline
+# (use_wake_word: false) to match how the plain N16R8 satellites are
+# already set up — flip this and add a micro_wake_word: block instead
+# if the other nodes actually do on-device wake word.
+# ------------------------------------------------------------------
+voice_assistant:
+  id: bedside_va
+  microphone: bedside_mic
+  speaker: bedside_speaker
+  use_wake_word: false
+  # Swaps the clock/weather home page for a status page for the duration
+  # of the interaction, so there's some visual confirmation it heard you —
+  # important for a bedside device you might be half-asleep talking to.
+  on_start:
+    - lvgl.page.show: voice_status_page
+    - lvgl.label.update:
+        id: status_label
+        text: "Listening..."
+        text_color: 0x4A90D9
+  on_listening:
+    - switch.turn_on: speaker_enable_switch
+  on_stt_end:
+    - lvgl.label.update:
+        id: status_label
+        text: "Thinking..."
+        text_color: 0x9B59B6
+  on_tts_start:
+    - lvgl.label.update:
+        id: status_label
+        text: "Speaking..."
+        text_color: 0x2ECC71
+  on_end:
+    - switch.turn_off: speaker_enable_switch
+    - lvgl.page.show: home_page
+  on_error:
+    - switch.turn_off: speaker_enable_switch
+    - lvgl.label.update:
+        id: status_label
+        text: "Sorry, try again"
+        text_color: 0xE74C3C
+    - delay: 3s
+    - lvgl.page.show: home_page
+
+binary_sensor:
+  - platform: gpio
+    name: "Boot Button"
+    pin:
+      number: GPIO0   # ESP32-S3 BOOT strap pin, standard across the family —
+                      # confirmed by the KEYS schematic block (Key1/BOOT
+                      # wired to GPIO0, same as the earlier draft assumed)
+      inverted: true
+    on_press:
+      - voice_assistant.start
+
+# TODO: the PWR button (Key2 in the KEYS schematic block) is NOT a plain
+# ESP32 GPIO — it's wired to the AXP2101 PMIC's PWRON pin for hardware
+# power sequencing (CHIP_PU/PWRON/PWROK), which the PMIC itself exposes
+# back to the ESP32 over I2C/IRQ rather than a dedicated GPIO. ESPHome
+# 2026.6.5 has no `axp2101` component (checked directly against the
+# installed component list), so there's no ready-made way to read this
+# button's press state from ESPHome yet. Leaving it unimplemented rather
+# than wiring a `binary_sensor: platform: gpio` to a pin that isn't
+# actually where this signal lives.
+
+# ------------------------------------------------------------------
+# Home Assistant data feeding the display: current time, local weather,
+# and a lights-off action button.
+# ------------------------------------------------------------------
+time:
+  - platform: homeassistant
+    id: ha_time
+
+text_sensor:
+  - platform: homeassistant
+    id: weather_condition
+    entity_id: weather.home  # adjust to the real weather entity
+
+sensor:
+  - platform: homeassistant
+    id: weather_temperature
+    entity_id: weather.home
+    attribute: temperature
+
+font:
+  - file: "gfonts://Roboto"
+    id: font_clock
+    size: 64
+  - file: "gfonts://Roboto"
+    id: font_weather
+    size: 24
+  - file: "gfonts://Roboto"
+    id: font_status
+    size: 36
+
+lvgl:
+  displays:
+    - main_display
+  touchscreens:
+    - main_touch
+  pages:
+    - id: home_page
+      widgets:
+        - label:
+            id: clock_label
+            align: CENTER
+            y: -80
+            text_font: font_clock
+            text: "--:--"
+        - label:
+            id: weather_label
+            align: CENTER
+            y: 0
+            text_font: font_weather
+            text: "-- / --°"
+        - button:
+            align: CENTER
+            y: 120
+            width: 160
+            height: 48
+            widgets:
+              - label:
+                  text: "Lights Off"
+            on_click:
+              - homeassistant.service:
+                  service: light.turn_off
+                  data:
+                    entity_id: all
+    # Shown for the duration of a voice-assistant interaction (see the
+    # voice_assistant on_start/on_end/on_error triggers above), then swapped
+    # back to home_page — a plain status word plus a color shift (blue while
+    # listening, purple while thinking, green while speaking, red on error)
+    # so it's obvious at a glance that it heard you, without needing to read
+    # fine print half-asleep at 2am.
+    - id: voice_status_page
+      widgets:
+        - label:
+            id: status_label
+            align: CENTER
+            text_font: font_status
+            text: "Listening..."
+            text_color: 0x4A90D9
+
+interval:
+  - interval: 1s
+    then:
+      - lvgl.label.update:
+          id: clock_label
+          text: !lambda 'return id(ha_time).now().strftime("%H:%M");'
+      - lvgl.label.update:
+          id: weather_label
+          text: !lambda |-
+            char buf[32];
+            snprintf(buf, sizeof(buf), "%s / %.0f°",
+                     id(weather_condition).state.c_str(),
+                     id(weather_temperature).state);
+            return std::string(buf);
