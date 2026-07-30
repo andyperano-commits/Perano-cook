@@ -111,8 +111,28 @@ speaker audio back), plus:
   error, auto-reverts after 3s) via the `voice_assistant` component's
   `on_start`/`on_stt_end`/`on_tts_start`/`on_end`/`on_error` triggers —
   otherwise there'd be no feedback that the device heard you, which
-  matters for something you're half-asleep talking to at the bedside
-- BOOT button starts a voice-assistant turn
+  matters for something you're half-asleep talking to at the bedside;
+  plus an `alarm_page` (set hour/minute with +/- buttons, toggle
+  enabled/disabled) and an `alarm_ringing_page` shown when it fires
+- BOOT button starts a voice-assistant turn, or dismisses a ringing alarm
+  if one is active
+
+**Alarm feature**: `alarm_hour`/`alarm_minute`/`alarm_enabled` are
+template `number`/`switch` entities (`restore_value: true`) so the alarm
+survives a reboot and is also visible/settable from Home Assistant, not
+just the touchscreen. A `time: on_time` trigger checks every minute; on a
+match it turns the speaker amp on, shows `alarm_ringing_page`, and fires
+a custom `esphome.bedside_alarm_fired` Home Assistant event. **This
+device only handles scheduling, ringing, and dismissal — it does not
+decide what music plays.** That's intentionally left to a Home Assistant
+automation that listens for `esphome.bedside_alarm_fired` and calls
+`media_player.play_media` against the `bedside_media_player` entity
+(added via the `speaker` platform's `media_player:` component, wrapping
+the same physical speaker used for voice replies) with whatever source
+you want — Spotify, an internet radio stream, a local file, etc. This
+mirrors how the weather tile and lights-off button already work: the
+device is a thin satellite, Home Assistant does the flexible part. You'll
+need to write that HA automation yourself — it's not part of this repo.
 
 Copy `esphome/secrets.yaml.example` to `esphome/secrets.yaml` and fill in
 real WiFi/API/OTA credentials before compiling.
@@ -160,6 +180,10 @@ in the file itself):
   whichever they actually use.
 - `weather.home` in the `text_sensor`/`sensor` blocks needs pointing at
   the real Home Assistant weather entity ID.
+- The Home Assistant automation that reacts to `esphome.bedside_alarm_fired`
+  and actually calls `media_player.play_media` isn't part of this repo —
+  it needs to be written in HA once the device is on the network and its
+  `bedside_media_player` entity shows up.
 
 ## Next steps
 

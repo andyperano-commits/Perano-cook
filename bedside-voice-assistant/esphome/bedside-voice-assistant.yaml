@@ -198,6 +198,84 @@ switch:
       - output.turn_on: speaker_enable
     turn_off_action:
       - output.turn_off: speaker_enable
+  - platform: template
+    name: "Alarm Enabled"
+    id: alarm_enabled
+    icon: mdi:alarm
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    turn_on_action:
+      - lvgl.label.update:
+          id: alarm_toggle_label
+          text: "Alarm: ON"
+    turn_off_action:
+      - lvgl.label.update:
+          id: alarm_toggle_label
+          text: "Alarm: OFF"
+
+# ------------------------------------------------------------------
+# Media player — exposes this device's speaker to Home Assistant as a
+# playback target. This node only handles *scheduling* the alarm (time,
+# enabled state, dismiss) and turning the speaker amp on; deciding *what*
+# music actually plays is left to a Home Assistant automation reacting to
+# the esphome.bedside_alarm_fired event below and calling
+# media_player.play_media against this entity — same division of labor
+# as the weather tile and lights-off button already have (device is a
+# thin satellite, Home Assistant does the smart/flexible part).
+# ------------------------------------------------------------------
+media_player:
+  - platform: speaker
+    id: bedside_media_player
+    name: "Bedside Media Player"
+    announcement_pipeline:
+      speaker: bedside_speaker
+
+# ------------------------------------------------------------------
+# Alarm — hour/minute/enabled are template entities (restore_value) so
+# the alarm survives a reboot and can also be read/set from Home
+# Assistant, not just the on-device touchscreen.
+# ------------------------------------------------------------------
+globals:
+  - id: alarm_ringing
+    type: bool
+    restore_value: false
+    initial_value: "false"
+
+number:
+  - platform: template
+    name: "Alarm Hour"
+    id: alarm_hour
+    icon: mdi:alarm
+    min_value: 0
+    max_value: 23
+    step: 1
+    initial_value: 7
+    optimistic: true
+    restore_value: true
+    on_value:
+      - lvgl.label.update:
+          id: alarm_time_label
+          text: !lambda |-
+            char buf[8];
+            snprintf(buf, sizeof(buf), "%02d:%02d", (int) x, (int) id(alarm_minute).state);
+            return std::string(buf);
+  - platform: template
+    name: "Alarm Minute"
+    id: alarm_minute
+    icon: mdi:alarm
+    min_value: 0
+    max_value: 59
+    step: 5
+    initial_value: 0
+    optimistic: true
+    restore_value: true
+    on_value:
+      - lvgl.label.update:
+          id: alarm_time_label
+          text: !lambda |-
+            char buf[8];
+            snprintf(buf, sizeof(buf), "%02d:%02d", (int) id(alarm_hour).state, (int) x);
+            return std::string(buf);
 
 # ------------------------------------------------------------------
 # Voice assistant — this node is just another satellite into the
@@ -246,6 +324,18 @@ voice_assistant:
     - delay: 3s
     - lvgl.page.show: home_page
 
+# Shared by the BOOT button (when an alarm is ringing) and the Dismiss
+# button on alarm_ringing_page.
+script:
+  - id: dismiss_alarm
+    then:
+      - globals.set:
+          id: alarm_ringing
+          value: "false"
+      - switch.turn_off: speaker_enable_switch
+      - media_player.stop: bedside_media_player
+      - lvgl.page.show: home_page
+
 binary_sensor:
   - platform: gpio
     name: "Boot Button"
@@ -255,7 +345,16 @@ binary_sensor:
                       # wired to GPIO0, same as the earlier draft assumed)
       inverted: true
     on_press:
-      - voice_assistant.start
+      # Dismisses a ringing alarm if one is active, otherwise starts a
+      # normal voice-assistant turn — there's no second physical button
+      # free for this (PWR isn't GPIO-readable, see the note below).
+      - if:
+          condition:
+            lambda: "return id(alarm_ringing);"
+          then:
+            - script.execute: dismiss_alarm
+          else:
+            - voice_assistant.start
 
 # TODO: the PWR button (Key2 in the KEYS schematic block) is NOT a plain
 # ESP32 GPIO — it's wired to the AXP2101 PMIC's PWRON pin for hardware
@@ -274,6 +373,31 @@ binary_sensor:
 time:
   - platform: homeassistant
     id: ha_time
+    on_time:
+      # Fires once a minute; only acts when the alarm is armed and the
+      # clock matches. Turns the speaker amp on (for whatever HA plays)
+      # and shows the ringing page; a HA automation listening for
+      # esphome.bedside_alarm_fired is what actually decides which music
+      # to play and calls media_player.play_media against
+      # bedside_media_player — this device just schedules and rings.
+      - seconds: 0
+        then:
+          - if:
+              condition:
+                and:
+                  - switch.is_on: alarm_enabled
+                  - lambda: |-
+                      auto t = id(ha_time).now();
+                      return t.hour == (int) id(alarm_hour).state
+                          && t.minute == (int) id(alarm_minute).state;
+              then:
+                - globals.set:
+                    id: alarm_ringing
+                    value: "true"
+                - switch.turn_on: speaker_enable_switch
+                - lvgl.page.show: alarm_ringing_page
+                - homeassistant.event:
+                    event: esphome.bedside_alarm_fired
 
 text_sensor:
   - platform: homeassistant
@@ -319,9 +443,9 @@ lvgl:
             text: "-- / --°"
         - button:
             align: CENTER
-            y: 120
+            y: 110
             width: 160
-            height: 48
+            height: 44
             widgets:
               - label:
                   text: "Lights Off"
@@ -330,6 +454,16 @@ lvgl:
                   service: light.turn_off
                   data:
                     entity_id: all
+        - button:
+            align: CENTER
+            y: 165
+            width: 160
+            height: 44
+            widgets:
+              - label:
+                  text: "Alarm"
+            on_click:
+              - lvgl.page.show: alarm_page
     # Shown for the duration of a voice-assistant interaction (see the
     # voice_assistant on_start/on_end/on_error triggers above), then swapped
     # back to home_page — a plain status word plus a color shift (blue while
@@ -344,6 +478,110 @@ lvgl:
             text_font: font_status
             text: "Listening..."
             text_color: 0x4A90D9
+    # Set-alarm UI: hour/minute stepped with +/- buttons rather than a
+    # roller/spinbox, to keep this first pass simple. alarm_time_label is
+    # kept in sync by the alarm_hour/alarm_minute number entities'
+    # on_value triggers, and alarm_toggle_label by alarm_enabled's
+    # turn_on/turn_off triggers, so this page doesn't need its own
+    # separate refresh logic.
+    - id: alarm_page
+      widgets:
+        - label:
+            align: TOP_MID
+            y: 30
+            text_font: font_weather
+            text: "Set Alarm"
+        - label:
+            id: alarm_time_label
+            align: CENTER
+            y: -60
+            text_font: font_clock
+            text: "07:00"
+        - button:
+            align: CENTER
+            x: -70
+            y: 10
+            width: 60
+            height: 44
+            widgets:
+              - label:
+                  text: "H+"
+            on_click:
+              - number.increment: alarm_hour
+        - button:
+            align: CENTER
+            x: 0
+            y: 10
+            width: 60
+            height: 44
+            widgets:
+              - label:
+                  text: "H-"
+            on_click:
+              - number.decrement: alarm_hour
+        - button:
+            align: CENTER
+            x: 70
+            y: 10
+            width: 60
+            height: 44
+            widgets:
+              - label:
+                  text: "M+"
+            on_click:
+              - number.increment: alarm_minute
+        - button:
+            align: CENTER
+            x: 140
+            y: 10
+            width: 60
+            height: 44
+            widgets:
+              - label:
+                  text: "M-"
+            on_click:
+              - number.decrement: alarm_minute
+        - button:
+            align: CENTER
+            y: 70
+            width: 160
+            height: 44
+            widgets:
+              - label:
+                  id: alarm_toggle_label
+                  text: "Alarm: OFF"
+            on_click:
+              - switch.toggle: alarm_enabled
+        - button:
+            align: CENTER
+            y: 130
+            width: 160
+            height: 44
+            widgets:
+              - label:
+                  text: "Back"
+            on_click:
+              - lvgl.page.show: home_page
+    # Shown when the alarm fires (see time: on_time above) until dismissed
+    # via the BOOT button or this page's own Dismiss button.
+    - id: alarm_ringing_page
+      widgets:
+        - label:
+            align: CENTER
+            y: -40
+            text_font: font_clock
+            text_color: 0xE8B339
+            text: "Wake Up!"
+        - button:
+            align: CENTER
+            y: 80
+            width: 180
+            height: 56
+            widgets:
+              - label:
+                  text: "Dismiss"
+            on_click:
+              - script.execute: dismiss_alarm
 
 interval:
   - interval: 1s
