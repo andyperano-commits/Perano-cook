@@ -213,12 +213,38 @@ voice_assistant:
   microphone: bedside_mic
   speaker: bedside_speaker
   use_wake_word: false
+  # Swaps the clock/weather home page for a status page for the duration
+  # of the interaction, so there's some visual confirmation it heard you —
+  # important for a bedside device you might be half-asleep talking to.
+  on_start:
+    - lvgl.page.show: voice_status_page
+    - lvgl.label.update:
+        id: status_label
+        text: "Listening..."
+        text_color: 0x4A90D9
   on_listening:
     - switch.turn_on: speaker_enable_switch
+  on_stt_end:
+    - lvgl.label.update:
+        id: status_label
+        text: "Thinking..."
+        text_color: 0x9B59B6
+  on_tts_start:
+    - lvgl.label.update:
+        id: status_label
+        text: "Speaking..."
+        text_color: 0x2ECC71
   on_end:
     - switch.turn_off: speaker_enable_switch
+    - lvgl.page.show: home_page
   on_error:
     - switch.turn_off: speaker_enable_switch
+    - lvgl.label.update:
+        id: status_label
+        text: "Sorry, try again"
+        text_color: 0xE74C3C
+    - delay: 3s
+    - lvgl.page.show: home_page
 
 binary_sensor:
   - platform: gpio
@@ -267,6 +293,9 @@ font:
   - file: "gfonts://Roboto"
     id: font_weather
     size: 24
+  - file: "gfonts://Roboto"
+    id: font_status
+    size: 36
 
 lvgl:
   displays:
@@ -301,6 +330,20 @@ lvgl:
                   service: light.turn_off
                   data:
                     entity_id: all
+    # Shown for the duration of a voice-assistant interaction (see the
+    # voice_assistant on_start/on_end/on_error triggers above), then swapped
+    # back to home_page — a plain status word plus a color shift (blue while
+    # listening, purple while thinking, green while speaking, red on error)
+    # so it's obvious at a glance that it heard you, without needing to read
+    # fine print half-asleep at 2am.
+    - id: voice_status_page
+      widgets:
+        - label:
+            id: status_label
+            align: CENTER
+            text_font: font_status
+            text: "Listening..."
+            text_color: 0x4A90D9
 
 interval:
   - interval: 1s

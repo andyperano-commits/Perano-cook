@@ -103,9 +103,15 @@ Assistant, not here — this device just streams mic audio in and plays
 speaker audio back), plus:
 - 466×466 round AMOLED display (CO5300 driver over QSPI)
 - Capacitive touchscreen
-- LVGL UI: clock face, weather tile (pulled from a Home Assistant
-  `weather.*` entity), and a "Lights Off" button calling
-  `light.turn_off`
+- LVGL UI: a `home_page` with a clock face, weather tile (pulled from a
+  Home Assistant `weather.*` entity), and a "Lights Off" button calling
+  `light.turn_off`; plus a `voice_status_page` that swaps in for the
+  duration of a voice interaction, showing "Listening…" (blue) /
+  "Thinking…" (purple) / "Speaking…" (green) / "Sorry, try again" (red on
+  error, auto-reverts after 3s) via the `voice_assistant` component's
+  `on_start`/`on_stt_end`/`on_tts_start`/`on_end`/`on_error` triggers —
+  otherwise there'd be no feedback that the device heard you, which
+  matters for something you're half-asleep talking to at the bedside
 - BOOT button starts a voice-assistant turn
 
 Copy `esphome/secrets.yaml.example` to `esphome/secrets.yaml` and fill in
