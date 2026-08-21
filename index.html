@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Perano Cook</title>
+  <link rel="manifest" href="manifest.webmanifest"/>
+  <meta name="theme-color" content="#222222"/>
+  <link rel="apple-touch-icon" href="icons/icon-192.png"/>
+  <link rel="stylesheet" href="styles.css"/>
+</head>
+<body>
+  <header>
+    <h1>Perano Cook</h1>
+    <div class="small">Private recipe book • Offline • Add to Home Screen</div>
+  </header>
+
+  <nav class="tabs">
+    <button class="active" data-tab="recipes">Recipes</button>
+    <button data-tab="add">Add</button>
+    <button data-tab="planner">Meal Planner</button>
+    <button data-tab="groceries">Groceries</button>
+    <button data-tab="settings">Settings</button>
+  </nav>
+
+  <main class="container">
+    <!-- Recipes -->
+    <section id="tab-recipes">
+      <div class="card">
+        <input id="search" class="input" placeholder="Search by title, tag, or ingredient…"/>
+      </div>
+      <div id="recipes-list" class="grid"></div>
+    </section>
+
+    <!-- Add -->
+    <section id="tab-add" class="hidden">
+      <div class="card">
+        <label>Title</label>
+        <input id="r-title" class="input" placeholder="e.g., One-Pan Chicken"/>
+      </div>
+      <div class="card">
+        <label>Link (TikTok or website)</label>
+        <input id="r-link" class="input" placeholder="https://…"/>
+      </div>
+      <div class="card">
+        <label>Ingredients (one per line)</label>
+        <textarea id="r-ingredients" placeholder="2 chicken thighs&#10;1 onion&#10;2 cloves garlic"></textarea>
+      </div>
+      <div class="card">
+        <label>Method / Notes</label>
+        <textarea id="r-method" placeholder="Steps or notes…"></textarea>
+      </div>
+      <div class="card">
+        <label>Tags (comma separated)</label>
+        <input id="r-tags" class="input" placeholder="quick, dinner, spicy"/>
+      </div>
+      <div class="card">
+        <label>Photo</label>
+        <input id="r-photo" type="file" accept="image/*" capture="environment"/>
+      </div>
+      <div class="card">
+        <div class="actions">
+          <button id="btn-save" class="primary">Save Recipe</button>
+          <button id="btn-clear" class="ghost">Clear</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Planner -->
+    <section id="tab-planner" class="hidden">
+      <div class="card">
+        <div class="actions">
+          <button id="btn-plan-add" class="ghost">Add Recipe to Week</button>
+          <button id="btn-plan-clear" class="ghost">Clear Week</button>
+          <button id="btn-generate-groceries" class="primary">Generate Grocery List</button>
+        </div>
+      </div>
+      <div class="week" id="week-grid">
+        <!-- Days will render here -->
+      </div>
+    </section>
+
+    <!-- Groceries -->
+    <section id="tab-groceries" class="hidden">
+      <div class="card">
+        <div class="actions">
+          <button id="btn-groceries-clear" class="ghost">Clear List</button>
+          <button id="btn-groceries-export" class="ghost">Export</button>
+        </div>
+      </div>
+      <div class="card">
+        <ul id="groceries-list" class="list-check"></ul>
+      </div>
+    </section>
+
+    <!-- Settings -->
+    <section id="tab-settings" class="hidden">
+      <div class="card">
+        <h3>Voice Notes (per recipe)</h3>
+        <div class="small">Open a recipe and use the mic button to record quick notes.</div>
+      </div>
+      <div class="card">
+        <h3>Backup</h3>
+        <div class="actions">
+          <button id="btn-backup" class="ghost">Export Backup (.json)</button>
+          <input id="backup-file" type="file" accept=".json" class="hidden"/>
+          <button id="btn-restore" class="ghost">Restore from Backup</button>
+        </div>
+        <div class="small">Backups include recipes, planner, groceries. Voice notes not included in JSON backup yet.</div>
+      </div>
+      <footer class="info">Your data stays on this device. No accounts. No cloud.</footer>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js');
+    }
+  </script>
+</body>
+</html>
